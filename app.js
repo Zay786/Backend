@@ -39,7 +39,10 @@ const registerApiRoute = (method, path, handler) => {
 
 const getMlApiBaseUrl = (req) => {
   if (process.env.ML_API_URL) {
-    return process.env.ML_API_URL.replace(/\/$/, "");
+    const configuredUrl = process.env.ML_API_URL.replace(/\/$/, "");
+    return configuredUrl.endsWith("/api/ml")
+      ? configuredUrl
+      : `${configuredUrl}/api/ml`;
   }
 
   const protocol = req.headers["x-forwarded-proto"] || "https";
