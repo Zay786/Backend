@@ -129,7 +129,11 @@ registerApiRoute("post", "/quotation", async (req, res) => {
       console.error("ML API ERROR:", error.response.data);
     }
 
-    return res.status(500).json({ error: "Quotation failed" });
+    return res.status(500).json({
+      error: "Quotation failed",
+      details: error.message,
+      mlDetails: error.response?.data || null,
+    });
   }
 });
 
