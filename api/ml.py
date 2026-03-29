@@ -21,7 +21,9 @@ class QuoteRequest(BaseModel):
     service: str
 
 
+@app.post("/")
 @app.post("/generate")
+@app.post("/api/ml/generate")
 def generate_quote(data: QuoteRequest):
     base_price = random.randint(1000, 5000)
     price = base_price + (data.weight * 50)
