@@ -94,14 +94,30 @@ registerApiRoute("post", "/login", async (req, res) => {
 registerApiRoute("post", "/quotation", async (req, res) => {
   try {
     const data = req.body;
+    const historicalQuotes = await knex("quotations")
+      .select(
+        "origin",
+        "destination",
+        "commodity",
+        "weight_tons",
+        "service_type",
+        "predicted_price"
+      )
+      .whereNotNull("predicted_price")
+      .orderBy("created_at", "desc")
+      .limit(1000);
 
     const response = await axios.post(
       `${getMlApiBaseUrl(req)}/generate`,
-      data,
+      {
+        ...data,
+        historical_quotes: historicalQuotes,
+      },
       { timeout: 10000 }
     );
 
-    const { price, pdf_url, pdf_base64, pdf_file_name } = response.data;
+    const { price, pdf_url, pdf_base64, pdf_file_name, model_details } =
+      response.data;
 
     await knex("quotations").insert({
       customer_name: data.name,
@@ -121,6 +137,7 @@ registerApiRoute("post", "/quotation", async (req, res) => {
       pdf_url,
       pdf_base64,
       pdf_file_name,
+      model_details,
     });
   } catch (error) {
     console.error("QUOTATION ERROR:", error.message);
