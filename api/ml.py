@@ -200,16 +200,55 @@ def generate_quote(data: QuoteRequest):
     pdf_buffer = BytesIO()
     pdf = canvas.Canvas(pdf_buffer)
 
-    pdf.drawString(100, 750, "TOM & JERRY LOGISTICS QUOTATION")
-    pdf.drawString(100, 720, f"Customer: {data.name}")
-    pdf.drawString(100, 700, f"Company: {data.company or 'N/A'}")
-    pdf.drawString(100, 680, f"Origin: {data.origin}")
-    pdf.drawString(100, 660, f"Destination: {data.destination}")
-    pdf.drawString(100, 640, f"Commodity: {data.commodity}")
-    pdf.drawString(100, 620, f"Weight: {data.weight} Tons")
-    pdf.drawString(100, 600, f"Service: {data.service}")
-    pdf.drawString(100, 560, f"Estimated Price: ${price}")
-    pdf.drawString(100, 540, f"Model Used: {model_algorithm}")
+    # Title in navy blue
+    pdf.setFillColorRGB(0, 0, 0.5)  # Navy blue
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawString(100, 750, "TOM & JERRY Logistics")
+
+    # Subtitle
+    pdf.setFillColorRGB(0, 0, 0)  # Black
+    pdf.setFont("Helvetica", 14)
+    pdf.drawString(100, 720, "Quotation")
+
+    # Customer details
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(100, 680, "Customer Information:")
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(120, 660, f"Name: {data.name}")
+    pdf.drawString(120, 640, f"Company: {data.company or 'N/A'}")
+
+    # Shipment details
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(100, 600, "Shipment Details:")
+    pdf.setFont("Helvetica", 11)
+    pdf.drawString(120, 580, f"Origin: {data.origin}")
+    pdf.drawString(120, 560, f"Destination: {data.destination}")
+    pdf.drawString(120, 540, f"Commodity: {data.commodity}")
+    pdf.drawString(120, 520, f"Weight: {data.weight} Tons")
+    pdf.drawString(120, 500, f"Service: {data.service}")
+
+    # Price
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(100, 460, f"Estimated Price: ${price}")
+
+    # Note
+    pdf.setFont("Helvetica", 10)
+    note_text = (
+        "Please note that this is just a quotation and not the fixed price. "
+        "The actual price may have a little variation. Kindly get into contact "
+        "with our team on customerservice@tomjerry.com to further discuss about "
+        "turning this quotation opportunity into a reality!"
+    )
+    pdf.drawString(100, 420, note_text[:60])
+    pdf.drawString(100, 405, note_text[60:120])
+    pdf.drawString(100, 390, note_text[120:180])
+    pdf.drawString(100, 375, note_text[180:240])
+    pdf.drawString(100, 360, note_text[240:])
+
+    # Model used in light grey
+    pdf.setFillColorRGB(0.7, 0.7, 0.7)  # Light grey
+    pdf.setFont("Helvetica", 8)
+    pdf.drawString(100, 320, f"Model Used: {model_algorithm}")
 
     pdf.save()
     pdf_buffer.seek(0)
