@@ -235,9 +235,7 @@ def generate_quote(data: QuoteRequest):
     pdf.setFont("Helvetica", 10)
     note_text = (
         "Please note that this is just a quotation and not the fixed price. "
-        "The actual price may have a little variation. Kindly get into contact "
-        "with our team on customerservice@tomjerry.com to further discuss about "
-        "turning this quotation opportunity into a reality!"
+        "The actual price may have a little variation. Kindly get into contact with our team on customerservice@tomjerry.com to further discuss about turning this quotation opportunity into a reality!"
     )
     pdf.drawString(100, 420, note_text[:60])
     pdf.drawString(100, 405, note_text[60:120])
