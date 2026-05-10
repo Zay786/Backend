@@ -5,9 +5,14 @@ import uuid
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import Paragraph
 from reportlab.pdfgen import canvas
 
 app = FastAPI()
+
 MIN_HISTORY_FOR_KNN = 15
 
 
@@ -32,12 +37,23 @@ class QuoteRequest(BaseModel):
     historical_quotes: list[HistoricalQuote] = Field(default_factory=list)
 
 
-def _build_categories(history: list[HistoricalQuote], request: QuoteRequest) -> dict[str, list[str]]:
+def _build_categories(
+    history: list[HistoricalQuote],
+    request: QuoteRequest
+) -> dict[str, list[str]]:
     return {
-        "origins": sorted({quote.origin for quote in history} | {request.origin}),
-        "destinations": sorted({quote.destination for quote in history} | {request.destination}),
-        "commodities": sorted({quote.commodity for quote in history} | {request.commodity}),
-        "services": sorted({quote.service_type for quote in history} | {request.service}),
+        "origins": sorted(
+            {quote.origin for quote in history} | {request.origin}
+        ),
+        "destinations": sorted(
+            {quote.destination for quote in history} | {request.destination}
+        ),
+        "commodities": sorted(
+            {quote.commodity for quote in history} | {request.commodity}
+        ),
+        "services": sorted(
+            {quote.service_type for quote in history} | {request.service}
+        ),
     }
 
 
@@ -51,7 +67,9 @@ def _encode_features(
     categories: dict[str, list[str]],
     max_weight: float,
 ) -> list[float]:
+
     safe_max_weight = max(max_weight, 1.0)
+
     features = [weight / safe_max_weight]
 
     for value in categories["origins"]:
@@ -69,22 +87,33 @@ def _encode_features(
     return features
 
 
-def _euclidean_distance(left: list[float], right: list[float]) -> float:
-    return math.sqrt(sum((a - b) ** 2 for a, b in zip(left, right)))
+def _euclidean_distance(
+    left: list[float],
+    right: list[float]
+) -> float:
+
+    return math.sqrt(
+        sum((a - b) ** 2 for a, b in zip(left, right))
+    )
 
 
-def _fallback_formula(request: QuoteRequest) -> tuple[float, dict]:
+def _fallback_formula(
+    request: QuoteRequest
+) -> tuple[float, dict]:
+
     service_multiplier = {
         "Air Freight": 1.8,
         "Sea Freight": 1.15,
         "Land Transport": 1.0,
     }
+
     commodity_multiplier = {
         "Sulphur": 1.12,
         "Copper": 1.3,
         "Maize": 0.95,
         "Wheat": 0.9,
     }
+
     port_coordinates = {
         "Tanzania": (0.0, 0.0),
         "Walvisbay": (3.2, 1.4),
@@ -96,17 +125,37 @@ def _fallback_formula(request: QuoteRequest) -> tuple[float, dict]:
         "Paris": (8.8, 8.7),
     }
 
-    origin = port_coordinates.get(request.origin, (0.0, 0.0))
-    destination = port_coordinates.get(request.destination, (4.0, 4.0))
+    origin = port_coordinates.get(
+        request.origin,
+        (0.0, 0.0)
+    )
+
+    destination = port_coordinates.get(
+        request.destination,
+        (4.0, 4.0)
+    )
+
     route_distance = math.dist(origin, destination)
 
     base_charge = 850.0
     weight_charge = max(float(request.weight), 1.0) * 115.0
     route_charge = route_distance * 180.0
-    service_charge = service_multiplier.get(request.service, 1.0)
-    commodity_charge = commodity_multiplier.get(request.commodity, 1.0)
 
-    price = (base_charge + weight_charge + route_charge) * service_charge * commodity_charge
+    service_charge = service_multiplier.get(
+        request.service,
+        1.0
+    )
+
+    commodity_charge = commodity_multiplier.get(
+        request.commodity,
+        1.0
+    )
+
+    price = (
+        (base_charge + weight_charge + route_charge)
+        * service_charge
+        * commodity_charge
+    )
 
     return price, {
         "algorithm": "fallback_formula",
@@ -122,21 +171,32 @@ def _fallback_formula(request: QuoteRequest) -> tuple[float, dict]:
     }
 
 
-def predict_price(request: QuoteRequest) -> tuple[float, dict]:
+def predict_price(
+    request: QuoteRequest
+) -> tuple[float, dict]:
+
     history = [
         quote
         for quote in request.historical_quotes
-        if quote.predicted_price is not None and quote.weight_tons is not None
+        if quote.predicted_price is not None
+        and quote.weight_tons is not None
     ]
 
     if len(history) < MIN_HISTORY_FOR_KNN:
+
         price, model_details = _fallback_formula(request)
+
         model_details["records_available"] = len(history)
         model_details["min_history_for_knn"] = MIN_HISTORY_FOR_KNN
+
         return price, model_details
 
     categories = _build_categories(history, request)
-    max_weight = max([request.weight] + [float(quote.weight_tons) for quote in history])
+
+    max_weight = max(
+        [request.weight]
+        + [float(quote.weight_tons) for quote in history]
+    )
 
     request_vector = _encode_features(
         origin=request.origin,
@@ -149,7 +209,9 @@ def predict_price(request: QuoteRequest) -> tuple[float, dict]:
     )
 
     scored_quotes = []
+
     for quote in history:
+
         quote_vector = _encode_features(
             origin=quote.origin,
             destination=quote.destination,
@@ -159,32 +221,51 @@ def predict_price(request: QuoteRequest) -> tuple[float, dict]:
             categories=categories,
             max_weight=max_weight,
         )
-        distance = _euclidean_distance(request_vector, quote_vector)
 
-        # Give more influence to highly similar historical quotations while
-        # still allowing nearby records to contribute.
-        similarity_weight = 1.0 / (distance + 0.05)
-        scored_quotes.append(
-            {
-                "distance": distance,
-                "weight": similarity_weight,
-                "price": float(quote.predicted_price),
-            }
+        distance = _euclidean_distance(
+            request_vector,
+            quote_vector
         )
 
-    scored_quotes.sort(key=lambda item: item["distance"])
+        similarity_weight = 1.0 / (distance + 0.05)
+
+        scored_quotes.append({
+            "distance": distance,
+            "weight": similarity_weight,
+            "price": float(quote.predicted_price),
+        })
+
+    scored_quotes.sort(
+        key=lambda item: item["distance"]
+    )
+
     neighbors = scored_quotes[: min(5, len(scored_quotes))]
 
-    weighted_total = sum(item["price"] * item["weight"] for item in neighbors)
-    total_weight = sum(item["weight"] for item in neighbors)
-    predicted_price = weighted_total / total_weight if total_weight else neighbors[0]["price"]
+    weighted_total = sum(
+        item["price"] * item["weight"]
+        for item in neighbors
+    )
+
+    total_weight = sum(
+        item["weight"]
+        for item in neighbors
+    )
+
+    predicted_price = (
+        weighted_total / total_weight
+        if total_weight
+        else neighbors[0]["price"]
+    )
 
     return predicted_price, {
         "algorithm": "knn_regression",
         "records_available": len(history),
         "records_used": len(neighbors),
         "min_history_for_knn": MIN_HISTORY_FOR_KNN,
-        "nearest_distances": [round(item["distance"], 4) for item in neighbors],
+        "nearest_distances": [
+            round(item["distance"], 4)
+            for item in neighbors
+        ],
     }
 
 
@@ -192,68 +273,184 @@ def predict_price(request: QuoteRequest) -> tuple[float, dict]:
 @app.post("/generate")
 @app.post("/api/ml/generate")
 def generate_quote(data: QuoteRequest):
+
     predicted_price, model_details = predict_price(data)
+
     price = round(predicted_price, 2)
-    model_algorithm = model_details.get("algorithm", "unknown")
+
+    model_algorithm = model_details.get(
+        "algorithm",
+        "unknown"
+    )
 
     file_name = f"quotation_{uuid.uuid4().hex}.pdf"
-    pdf_buffer = BytesIO()
-    pdf = canvas.Canvas(pdf_buffer)
 
-    # Title in navy blue
-    pdf.setFillColorRGB(0, 0, 0.5)  # Navy blue
+    pdf_buffer = BytesIO()
+
+    # LANDSCAPE A4
+    page_width, page_height = landscape(A4)
+
+    pdf = canvas.Canvas(
+        pdf_buffer,
+        pagesize=(page_width, page_height)
+    )
+
+    # =========================
+    # TITLE
+    # =========================
+
+    pdf.setFillColorRGB(0, 0, 0.5)
+
     pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawString(100, 750, "TOM & JERRY Logistics")
+
+    pdf.drawString(
+        50,
+        page_height - 50,
+        "TOM & JERRY Logistics"
+    )
 
     # Subtitle
-    pdf.setFillColorRGB(0, 0, 0)  # Black
+    pdf.setFillColorRGB(0, 0, 0)
+
     pdf.setFont("Helvetica", 14)
-    pdf.drawString(100, 720, "Quotation")
 
-    # Customer details
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(100, 680, "Customer Information:")
-    pdf.setFont("Helvetica", 11)
-    pdf.drawString(120, 660, f"Name: {data.name}")
-    pdf.drawString(120, 640, f"Company: {data.company or 'N/A'}")
-
-    # Shipment details
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(100, 600, "Shipment Details:")
-    pdf.setFont("Helvetica", 11)
-    pdf.drawString(120, 580, f"Origin: {data.origin}")
-    pdf.drawString(120, 560, f"Destination: {data.destination}")
-    pdf.drawString(120, 540, f"Commodity: {data.commodity}")
-    pdf.drawString(120, 520, f"Weight: {data.weight} Tons")
-    pdf.drawString(120, 500, f"Service: {data.service}")
-
-    # Price
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(100, 460, f"Estimated Price: ${price}")
-
-    # Note
-    pdf.setFont("Helvetica", 10)
-    note_text = (
-        "Please note that this is just a quotation and not the fixed price. "
-        "The actual price may have a little variation. Kindly get into contact with our team on customerservice@tomjerry.com to further discuss about turning this quotation opportunity into a reality!"
+    pdf.drawString(
+        50,
+        page_height - 80,
+        "Quotation"
     )
-    pdf.drawString(100, 420, note_text[:60])
-    pdf.drawString(100, 405, note_text[60:120])
-    pdf.drawString(100, 390, note_text[120:180])
-    pdf.drawString(100, 375, note_text[180:240])
-    pdf.drawString(100, 360, note_text[240:])
 
-    # Model used in light grey
-    pdf.setFillColorRGB(0.7, 0.7, 0.7)  # Light grey
-    pdf.setFont("Helvetica", 8)
-    pdf.drawString(100, 320, f"Model Used: {model_algorithm}")
+    # =========================
+    # CUSTOMER INFORMATION
+    # =========================
+
+    pdf.setFont("Helvetica-Bold", 12)
+
+    pdf.drawString(
+        50,
+        page_height - 130,
+        "Customer Information:"
+    )
+
+    pdf.setFont("Helvetica", 11)
+
+    pdf.drawString(
+        70,
+        page_height - 155,
+        f"Name: {data.name}"
+    )
+
+    pdf.drawString(
+        70,
+        page_height - 175,
+        f"Company: {data.company or 'N/A'}"
+    )
+
+    # =========================
+    # SHIPMENT DETAILS
+    # =========================
+
+    pdf.setFont("Helvetica-Bold", 12)
+
+    pdf.drawString(
+        50,
+        page_height - 220,
+        "Shipment Details:"
+    )
+
+    pdf.setFont("Helvetica", 11)
+
+    pdf.drawString(
+        70,
+        page_height - 245,
+        f"Origin: {data.origin}"
+    )
+
+    pdf.drawString(
+        70,
+        page_height - 265,
+        f"Destination: {data.destination}"
+    )
+
+    pdf.drawString(
+        70,
+        page_height - 285,
+        f"Commodity: {data.commodity}"
+    )
+
+    pdf.drawString(
+        70,
+        page_height - 305,
+        f"Weight: {data.weight} Tons"
+    )
+
+    pdf.drawString(
+        70,
+        page_height - 325,
+        f"Service: {data.service}"
+    )
+
+    # =========================
+    # PRICE
+    # =========================
+
+    pdf.setFont("Helvetica-Bold", 14)
+
+    pdf.drawString(
+        50,
+        page_height - 370,
+        f"Estimated Price: ${price}"
+    )
+
+    # =========================
+    # =========================
+    # NOTE (FIXED USING PARAGRAPH)
+    # =========================
+
+    pdf.setFillColorRGB(0, 0, 0)
+
+    note_style = ParagraphStyle(
+        name="note",
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+    )
+
+    note_text = (
+        "Note: This quotation is indicative only and subject to final confirmation. "
+        "Prices may vary slightly. Please contact our sales team for details."
+    )
+
+    LEFT_MARGIN = 60
+    RIGHT_MARGIN = 60
+
+    usable_width = page_width - LEFT_MARGIN - RIGHT_MARGIN
+
+    note = Paragraph(note_text, note_style)
+
+    # Wrap calculates proper height/width automatically
+    w, h = note.wrap(usable_width, page_height)
+
+    note_top = 250  # keep your original position reference
+
+    note.drawOn(
+        pdf,
+        LEFT_MARGIN,
+        note_top - h
+    )
+
+    # =========================
+    # FINAL SAVE
+    # =========================
 
     pdf.save()
     pdf_buffer.seek(0)
 
     return {
         "price": price,
-        "pdf_base64": base64.b64encode(pdf_buffer.getvalue()).decode("utf-8"),
+        "pdf_base64": base64.b64encode(
+            pdf_buffer.getvalue()
+        ).decode("utf-8"),
         "pdf_file_name": file_name,
         "model_details": model_details,
     }
