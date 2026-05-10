@@ -396,9 +396,11 @@ def generate_quote(data: QuoteRequest):
 
     pdf.setFont("Helvetica-Bold", 14)
 
+    price_y = page_height - 370
+
     pdf.drawString(
         50,
-        page_height - 370,
+        price_y,
         f"Estimated Price: ${price}"
     )
 
@@ -431,7 +433,7 @@ def generate_quote(data: QuoteRequest):
     # Wrap calculates proper height/width automatically
     w, h = note.wrap(usable_width, page_height)
 
-    note_top = 250  # keep your original position reference
+    note_top = price_y - 28
 
     note.drawOn(
         pdf,
